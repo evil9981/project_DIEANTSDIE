@@ -1,0 +1,14 @@
+﻿Build started 12/4/2015 6:42:42 PM.
+     1>Project "\\samba.cs.ucalgary.ca\haosun\Downloads\chai3d-3.0.0\templates\project DIEANTSDIE\application-VS2013.vcxproj" on node 2 (Build target(s)).
+     1>ClCompile:
+         C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\bin\x86_amd64\CL.exe /c /I../../src /I../../external/Eigen /I../../external/glew/include /I../../extras/freeglut/include /nologo /W3 /WX- /Ox /Ob2 /Oi /Ot /Oy /GT /D WIN64 /D NDEBUG /D _CONSOLE /D _MSVC /D _CRT_SECURE_NO_WARNINGS /D _VC80_UPGRADE=0x0710 /D _MBCS /GF /Gm- /EHsc /MD /GS- /Gy- /fp:precise /Zc:wchar_t /Zc:forScope /GR /Fo"obj/Release/x64\\" /Fd"obj/Release/x64\vc120.pdb" /Gd /TP /wd4244 /wd4305 /errorReport:prompt application.cpp
+         application.cpp
+       Link:
+         C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\bin\x86_amd64\link.exe /ERRORREPORT:PROMPT /OUT:"../../bin\application-GLUT.exe" /INCREMENTAL:NO /NOLOGO /LIBPATH:../../lib/Release/x64 /LIBPATH:../../extras/freeglut/lib/Release/x64 freeglut.lib chai3d.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /PDB:"\\samba.cs.ucalgary.ca\haosun\Downloads\chai3d-3.0.0\bin\application-GLUT.pdb" /SUBSYSTEM:CONSOLE /OPT:REF /OPT:ICF /TLBID:1 /DYNAMICBASE:NO /IMPLIB:"../../bin\application-GLUT.lib" /MACHINE:X64 obj/Release/x64\application.obj
+         obj/Release/x64\minion.obj
+         application-VS2013.vcxproj -> \\samba.cs.ucalgary.ca\haosun\Downloads\chai3d-3.0.0\templates\project DIEANTSDIE\../../bin\application-GLUT.exe
+     1>Done Building Project "\\samba.cs.ucalgary.ca\haosun\Downloads\chai3d-3.0.0\templates\project DIEANTSDIE\application-VS2013.vcxproj" (Build target(s)).
+
+Build succeeded.
+
+Time Elapsed 00:00:06.95
