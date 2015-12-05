@@ -94,13 +94,20 @@ double previousT = 0;
 double previousT2 = 0;
 double spawnRadius = 0.05;
 
-cShapeBox* enlargeButton;
-cShapeBox* bladeButton;
-cShapeBox* glassButton;
+// buttons
+cMultiMesh* enlargeButton;
+cMultiMesh* bladeButton;
+cMultiMesh* glassButton;
+cMultiMesh* barrierButton;
+
+// button indicator
+cShapeSphere* enlargeIcon;
+cMultiMesh* bladeIcon;
+cMultiMesh* glassIcon;
+cMultiMesh* barrierIcon;
 
 cPrecisionClock timer;
 bool isPaused = false;
-
 int camPushed = 0;
 
 // Justin's part
@@ -126,6 +133,7 @@ struct unit
 
 vector<unit*> minions;
 vector<unit*> objects;
+vector<unit*> buttons;
 //unit* minions[16];
 //double toolRadius = 0.002;
 int money = 0;
@@ -393,23 +401,83 @@ int main(int argc, char* argv[])
 	cakeBox->createAABBCollisionDetector(toolRadius);
 	cakeBox->setStiffness(0.3 * maxStiffness);
 
-	// Buttons for the shop
-	enlargeButton = new cShapeBox(0.01, 0.01, 0.0001);
-	enlargeButton->m_material->setRed();
-	enlargeButton->setLocalPos(-0.05, 0.05, 0);
-	world->addChild(enlargeButton);
+	///////////////////////////////////////
+	// BUTTON FOR THE SHOP
+	///////////////////////////////////////
 
-	bladeButton = new cShapeBox(0.01, 0.01, 0.0001);
-	bladeButton->m_material->setRed();
-	bladeButton->setLocalPos(-0.035, 0.05, 0);
-	world->addChild(bladeButton);
+	enlargeButton = new cMultiMesh;
+	enlargeButton->loadFromFile("100.obj");
+	unit* eButton = new unit();
+	eButton->mesh = enlargeButton;
+	eButton->mesh->scale(0.005);
+	world->addChild(eButton->mesh);
+	eButton->mesh->setLocalPos(0.06, 0.045, 0);
+	eButton->mesh->rotateAboutLocalAxisDeg(0, 0, 1, 90);
+	eButton->mesh->createAABBCollisionDetector(toolRadius);
+	buttons.push_back(eButton);
 
-	glassButton = new cShapeBox(0.01, 0.01, 0.0001);
-	glassButton->m_material->setRed();
-	glassButton->setLocalPos(-0.02, 0.05, 0);
-	world->addChild(glassButton);
+	barrierButton = new cMultiMesh;
+	barrierButton->loadFromFile("75.obj");
+	unit* bButton = new unit();
+	bButton->mesh = barrierButton;
+	bButton->mesh->scale(0.005);
+	world->addChild(bButton->mesh);
+	bButton->mesh->setLocalPos(0.06, 0.06, 0);
+	bButton->mesh->rotateAboutLocalAxisDeg(0, 0, 1, 180);
+	bButton->mesh->createAABBCollisionDetector(toolRadius);
+	buttons.push_back(bButton);
 
+	glassButton = new cMultiMesh;
+	glassButton->loadFromFile("180.obj");
+	unit* gButton = new unit();
+	gButton->mesh = glassButton;
+	gButton->mesh->scale(0.005);
+	world->addChild(gButton->mesh);
+	gButton->mesh->setLocalPos(0.06, 0.075, 0);
+	gButton->mesh->rotateAboutLocalAxisDeg(0, 0, 1, 90);
+	gButton->mesh->createAABBCollisionDetector(toolRadius);
+	buttons.push_back(gButton);
 
+	bladeButton = new cMultiMesh;
+	bladeButton->loadFromFile("180.obj");
+	unit* wButton = new unit();
+	wButton->mesh = bladeButton;
+	wButton->mesh->scale(0.005);
+	world->addChild(wButton->mesh);
+	wButton->mesh->setLocalPos(0.06, 0.09, 0);
+	wButton->mesh->rotateAboutLocalAxisDeg(0, 0, 1, 90);
+	wButton->mesh->createAABBCollisionDetector(toolRadius);
+	buttons.push_back(wButton);
+
+	////////////////////////////////////////////
+	// ICON FOR THE SHOP
+	////////////////////////////////////////////
+
+	enlargeIcon = new cShapeSphere(0.003);
+	enlargeIcon->m_material->setWhite();
+	enlargeIcon->setLocalPos(0.05, 0.045, 0.003);
+	world->addChild(enlargeIcon);
+
+	barrierIcon = new cMultiMesh;
+	barrierIcon->loadFromFile("barrier.obj");
+	barrierIcon->scale(0.005);
+	world->addChild(barrierIcon);
+	barrierIcon->setLocalPos(0.05, 0.06, 0);
+	barrierIcon->rotateAboutLocalAxisDeg(0, 0, 1, 90);
+
+	glassIcon = new cMultiMesh;
+	glassIcon->loadFromFile("magGlass.obj");
+	glassIcon->scale(0.002);
+	world->addChild(glassIcon);
+	glassIcon->setLocalPos(0.05, 0.075, 0);
+	glassIcon->rotateAboutLocalAxisDeg(0, 0, 1, 90);
+
+	bladeIcon = new cMultiMesh;
+	bladeIcon->loadFromFile("Whirling_Blades.obj");
+	bladeIcon->scale(0.002);
+	world->addChild(bladeIcon);
+	bladeIcon->setLocalPos(0.05, 0.09, 0);
+	bladeIcon->rotateAboutLocalAxisDeg(0, 0, 1, 90);
 
 	// spawn point
 	for (int i = 0; i < 8; i++){
@@ -581,10 +649,10 @@ void keySelect(unsigned char key, int x, int y)
 		}
 		else{
 			timer.stop();
-			camera->setSphericalReferences(cVector3d(0.03, 0.05, 0),    // origin
+			camera->setSphericalReferences(cVector3d(0.05, 0.07, 0),    // origin
 				cVector3d(0, 0, 1),    // zenith direction
 				cVector3d(1, 0, 0));   // azimuth direction
-			tool->setLocalPos(0.03, 0.05, 0);
+			tool->setLocalPos(0.05, 0.07, 0);
 			isPaused = true;
 		}
 	}
@@ -740,7 +808,6 @@ void updateHaptics(void)
 		// read position 
 		cVector3d position;
 		hapticDevice->getPosition(position);
-		cout << position << endl;
 
 		// read orientation 
 		cMatrix3d rotation;
