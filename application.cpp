@@ -1,12 +1,13 @@
 //==============================================================================
 /*
-\author    Your Name
+    \author    Your Name
 */
 //==============================================================================
 
 //------------------------------------------------------------------------------
 #include "chai3d.h"
 #include "minion.h"
+#include "ForceFieldSphere.h"
 //------------------------------------------------------------------------------
 using namespace chai3d;
 using namespace std;
@@ -22,12 +23,60 @@ using namespace std;
 // GENERAL SETTINGS
 //------------------------------------------------------------------------------
 
+
+cVector3d g = cVector3d(0, 0, -9.81);
+double airC = 0.5;// N/s
+double springLength = 0.06; //m
+cVector3d force(0, 0, 0);
+
+struct point
+{
+	double mass = 0.2;
+	double k = 400; //   N/m
+	double springC = 10; // Ns/m
+	cVector3d anchor = cVector3d(0, -0.0375, 0.05);
+	cVector3d pposition = cVector3d(0, 0, 0); //m
+	cVector3d pvelocity = cVector3d(0, 0, 0); //n/s
+	cShapeLine* spring;
+
+	point(double m, double thek, double c, cVector3d a, cShapeLine * s)
+	{
+		mass = m;
+		k = thek;
+		springC = c;
+		anchor = a;
+		spring = s;
+	}
+
+	void computeSpringForces(cVector3d position, ForceFieldSphere* particle, double delta_t)
+	{
+		cVector3d normal = pposition - anchor;
+		normal.normalize();
+		cVector3d forceParticle = -k * (pposition - anchor - normal * springLength) - springC * normal * pvelocity.dot(normal) - airC * pvelocity;
+
+		cVector3d theForce = particle->calculateForce(position);
+
+		force = force + theForce;
+		force -= forceParticle;
+
+		forceParticle = forceParticle + -theForce;
+
+
+		// Explicit euler integration
+		cVector3d acc = forceParticle / mass + g;
+		cVector3d vel = pvelocity + delta_t * acc;
+		cVector3d pos = pposition + delta_t * pvelocity;
+
+		pposition = pos;
+		pvelocity = vel;
+	}
+};
 // stereo Mode
 /*
-C_STEREO_DISABLED:            Stereo is disabled
-C_STEREO_ACTIVE:              Active stereo for OpenGL NVDIA QUADRO cards
-C_STEREO_PASSIVE_LEFT_RIGHT:  Passive stereo where L/R images are rendered next to each other
-C_STEREO_PASSIVE_TOP_BOTTOM:  Passive stereo where L/R images are rendered above each other
+    C_STEREO_DISABLED:            Stereo is disabled 
+    C_STEREO_ACTIVE:              Active stereo for OpenGL NVDIA QUADRO cards
+    C_STEREO_PASSIVE_LEFT_RIGHT:  Passive stereo where L/R images are rendered next to each other
+    C_STEREO_PASSIVE_TOP_BOTTOM:  Passive stereo where L/R images are rendered above each other
 */
 cStereoMode stereoMode = C_STEREO_DISABLED;
 
@@ -85,23 +134,20 @@ int windowH;
 int windowPosX;
 int windowPosY;
 
+// testing floor
+//cShapeBox* testFloor;
 cMultiMesh* cake;
 cMesh* table;
 double toolRadius = 0.0025;
 
 cShapeCylinder* fakeSpawns[8];
+minion* fakeAnts[16];
 double previousT = 0;
 double previousT2 = 0;
 double spawnRadius = 0.05;
 
-cShapeBox* enlargeButton;
-cShapeBox* bladeButton;
-cShapeBox* glassButton;
+cShapeCylinder* enlargeButton;
 
-cPrecisionClock timer;
-bool isPaused = false;
-
-int camPushed = 0;
 
 // Justin's part
 //------------------------------------------------------------------------------
@@ -110,8 +156,8 @@ cMultiMesh *monkey2;
 int hitpoints = 3;
 bool touched = false;
 cGenericObject* object;
-double topOffset = 0.0024;
-double bottomOffset = 0.0015;
+double topOffset = 0.004;
+double bottomOffset = 0.0025;
 
 struct unit
 {
@@ -133,7 +179,7 @@ unit* held;
 int holding = 0;
 
 int pushed = 0;
-double mass = 5.0;
+double mass = 0.5;
 int counter = 0;
 
 cVector3d torque(0, 0, 0);
@@ -143,6 +189,17 @@ cMultiMesh * cakeBox;
 int loop = 0;
 
 bool hit = false;
+
+
+point* objectWeight;
+double spring = 400.0;
+double springDamp = 1;
+//cShapeLine* spring1;
+ForceFieldSphere* objectWeightHolder;
+
+
+ForceFieldSphere* particle1;
+cShapeLine* spring1;
 //------------------------------------------------------------------------------
 
 //------------------------------------------------------------------------------
@@ -183,149 +240,138 @@ void changeCollisionDetector(string flag)
 
 //==============================================================================
 /*
-TEMPLATE:    application.cpp
+    TEMPLATE:    application.cpp
 
-Description of your application.
+    Description of your application.
 */
 //==============================================================================
 
 int main(int argc, char* argv[])
 {
-	//--------------------------------------------------------------------------
-	// INITIALIZATION
-	//--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    // INITIALIZATION
+    //--------------------------------------------------------------------------
 
-	cout << endl;
-	cout << "-----------------------------------" << endl;
-	cout << "CHAI3D" << endl;
-	cout << "-----------------------------------" << endl << endl << endl;
-	cout << "Keyboard Options:" << endl << endl;
-	cout << "[f] - Enable/Disable full screen mode" << endl;
-	cout << "[m] - Enable/Disable vertical mirroring" << endl;
-	cout << "[x] - Exit application" << endl;
-	cout << endl << endl;
+    cout << endl;
+    cout << "-----------------------------------" << endl;
+    cout << "CHAI3D" << endl;
+    cout << "-----------------------------------" << endl << endl << endl;
+    cout << "Keyboard Options:" << endl << endl;
+    cout << "[f] - Enable/Disable full screen mode" << endl;
+    cout << "[m] - Enable/Disable vertical mirroring" << endl;
+    cout << "[x] - Exit application" << endl;
+    cout << endl << endl;
 
 
-	//--------------------------------------------------------------------------
-	// OPENGL - WINDOW DISPLAY
-	//--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    // OPENGL - WINDOW DISPLAY
+    //--------------------------------------------------------------------------
 
-	// initialize GLUT
-	glutInit(&argc, argv);
+    // initialize GLUT
+    glutInit(&argc, argv);
 
-	// retrieve  resolution of computer display and position window accordingly
-	screenW = glutGet(GLUT_SCREEN_WIDTH);
-	screenH = glutGet(GLUT_SCREEN_HEIGHT);
-	windowW = (int)(0.8 * screenH);
-	windowH = (int)(0.5 * screenH);
-	windowPosY = (screenH - windowH) / 2;
-	windowPosX = windowPosY;
+    // retrieve  resolution of computer display and position window accordingly
+    screenW = glutGet(GLUT_SCREEN_WIDTH);
+    screenH = glutGet(GLUT_SCREEN_HEIGHT);
+    windowW = (int)(0.8 * screenH);
+    windowH = (int)(0.5 * screenH);
+    windowPosY = (screenH - windowH) / 2;
+    windowPosX = windowPosY; 
 
-	// initialize the OpenGL GLUT window
-	glutInitWindowPosition(windowPosX, windowPosY);
-	glutInitWindowSize(windowW, windowH);
+    // initialize the OpenGL GLUT window
+    glutInitWindowPosition(windowPosX, windowPosY);
+    glutInitWindowSize(windowW, windowH);
 
-	if (stereoMode == C_STEREO_ACTIVE)
-		glutInitDisplayMode(GLUT_RGB | GLUT_DEPTH | GLUT_DOUBLE | GLUT_STEREO);
-	else
-		glutInitDisplayMode(GLUT_RGB | GLUT_DEPTH | GLUT_DOUBLE);
+    if (stereoMode == C_STEREO_ACTIVE)
+        glutInitDisplayMode(GLUT_RGB | GLUT_DEPTH | GLUT_DOUBLE | GLUT_STEREO);
+    else
+        glutInitDisplayMode(GLUT_RGB | GLUT_DEPTH | GLUT_DOUBLE);
 
-	// create display context and initialize GLEW library
-	glutCreateWindow(argv[0]);
+    // create display context and initialize GLEW library
+    glutCreateWindow(argv[0]);
 
 #ifdef GLEW_VERSION
-	// initialize GLEW
-	glewInit();
+    // initialize GLEW
+    glewInit();
 #endif
 
-	// setup GLUT options
-	glutDisplayFunc(updateGraphics);
-	glutKeyboardFunc(keySelect);
-	glutReshapeFunc(resizeWindow);
-	glutSetWindowTitle("CHAI3D");
+    // setup GLUT options
+    glutDisplayFunc(updateGraphics);
+    glutKeyboardFunc(keySelect);
+    glutReshapeFunc(resizeWindow);
+    glutSetWindowTitle("CHAI3D");
 
-	// set fullscreen mode
-	if (fullscreen)
-	{
-		glutFullScreen();
-	}
-
-
-	//--------------------------------------------------------------------------
-	// WORLD - CAMERA - LIGHTING
-	//--------------------------------------------------------------------------
-
-	// create a new world.
-	world = new cWorld();
-
-	// set the background color of the environment
-	world->m_backgroundColor.setWhite();
-
-	// create a camera and insert it into the virtual world
-	camera = new cCamera(world);
-	world->addChild(camera);
-
-	// define a basis in spherical coordinates for the camera
-	camera->setSphericalReferences(cVector3d(0, 0, 0),    // origin
-								   cVector3d(0, 0, 1),    // zenith direction
-								   cVector3d(1, 0, 0));   // azimuth direction
-
-	camera->setSphericalDeg(0.15,    // spherical coordinate radius
-							35,      // spherical coordinate azimuth angle
-							0);     // spherical coordinate polar angle
-
-	// set the near and far clipping planes of the camera
-	camera->setClippingPlanes(0.01, 10.0);
-
-	// set stereo mode
-	camera->setStereoMode(stereoMode);
-
-	// set stereo eye separation and focal length (applies only if stereo is enabled)
-	camera->setStereoEyeSeparation(0.01);
-	camera->setStereoFocalLength(0.5);
-
-	// set vertical mirrored display mode
-	camera->setMirrorVertical(mirroredDisplay);
-
-	// enable multi-pass rendering to handle transparent objects
-	camera->setUseMultipassTransparency(true);
-
-	// create a directional light source
-	light = new cDirectionalLight(world);
-
-	// insert light source inside world
-	world->addChild(light);
-
-	// enable light source
-	light->setEnabled(true);
-
-	// define direction of light beam
-	light->setDir(-1.0, -1.0, -1.0);
-
-	// set lighting conditions
-	light->m_ambient.set(0.4f, 0.4f, 0.4f);
-	light->m_diffuse.set(0.8f, 0.8f, 0.8f);
-	light->m_specular.set(1.0f, 1.0f, 1.0f);
+    // set fullscreen mode
+    if (fullscreen)
+    {
+        glutFullScreen();
+    }
 
 
-	//--------------------------------------------------------------------------
-	// HAPTIC DEVICE / TOOLS
-	//--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    // WORLD - CAMERA - LIGHTING
+    //--------------------------------------------------------------------------
 
-	// create a haptic device handler
-	handler = new cHapticDeviceHandler();
+    // create a new world.
+    world = new cWorld();
 
-	// get a handle to the first haptic device
-	handler->getDevice(hapticDevice, 0);
+    // set the background color of the environment
+    world->m_backgroundColor.setWhite();
 
-	// open a connection to haptic device
-	hapticDevice->open();
+    // create a camera and insert it into the virtual world
+    camera = new cCamera(world);
+    world->addChild(camera);
 
-	// calibrate device (if necessary)
-	hapticDevice->calibrate();
+    // position and orient the camera
+    camera->set( cVector3d (0.1, 0.0, 0.05),    // camera position (eye)
+                 cVector3d (0.0, 0.0, 0.0),    // look at position (target)
+                 cVector3d (0.0, 0.0, 1.0));   // direction of the (up) vector
 
-	// retrieve information about the current haptic device
-	cHapticDeviceInfo info = hapticDevice->getSpecifications();
+    // set the near and far clipping planes of the camera
+    camera->setClippingPlanes(0.01, 10.0);
+
+    // set stereo mode
+    camera->setStereoMode(stereoMode);
+
+    // set stereo eye separation and focal length (applies only if stereo is enabled)
+    camera->setStereoEyeSeparation(0.01);
+    camera->setStereoFocalLength(0.5);
+
+    // set vertical mirrored display mode
+    camera->setMirrorVertical(mirroredDisplay);
+
+    // create a directional light source
+    light = new cDirectionalLight(world);
+
+    // insert light source inside world
+    world->addChild(light);
+
+    // enable light source
+    light->setEnabled(true);
+
+    // define direction of light beam
+    light->setDir(-1.0,-1.0,-1.0); 
+
+	
+
+    //--------------------------------------------------------------------------
+    // HAPTIC DEVICE / TOOLS
+    //--------------------------------------------------------------------------
+
+    // create a haptic device handler
+    handler = new cHapticDeviceHandler();
+
+    // get a handle to the first haptic device
+    handler->getDevice(hapticDevice, 0);
+
+    // open a connection to haptic device
+    hapticDevice->open();
+
+    // calibrate device (if necessary)
+    hapticDevice->calibrate();
+
+    // retrieve information about the current haptic device
+    cHapticDeviceInfo info = hapticDevice->getSpecifications();
 
 	// create a 3D tool and add it to the world
 	tool = new cToolCursor(world);
@@ -333,22 +379,22 @@ int main(int argc, char* argv[])
 	tool->enableDynamicObjects(true);
 
 	// position tool in respect to camera
-	tool->setLocalPos(0.0, 0.0, 0.0);
+	//tool->setLocalPos(0.0, 0.0, 0.0);
 
 	// connect the haptic device to the tool
 	tool->setHapticDevice(hapticDevice);
-
+	
 	// define a radius for the tool
 	tool->setRadius(toolRadius);
 
 	// map the physical workspace of the haptic device to a larger virtual workspace.
-	//tool->setWorkspaceRadius(0.15);
+	//tool->setWorkspaceRadius(0.2);
 
 	// start the haptic tool
 	tool->start();
 
-	// if the device has a gripper, enable the gripper to simulate a user switch
-	hapticDevice->setEnableGripperUserSwitch(true);
+    // if the device has a gripper, enable the gripper to simulate a user switch
+    hapticDevice->setEnableGripperUserSwitch(true);
 
 
 	//--------------------------------------------------------------------------
@@ -387,29 +433,30 @@ int main(int argc, char* argv[])
 	cakeBox = new cMultiMesh;
 	cakeBox->loadFromFile("Ugly_Cake_Bounding_Box.obj");
 	cakeBox->scale(0.015);
-	world->addChild(cakeBox);
+	world->addChild(cakeBox); 
 	cakeBox->setTransparencyLevel(0);
-
+	
 	cakeBox->createAABBCollisionDetector(toolRadius);
 	cakeBox->setStiffness(0.3 * maxStiffness);
 
-	// Buttons for the shop
-	enlargeButton = new cShapeBox(0.01, 0.01, 0.0001);
+	enlargeButton = new cShapeCylinder(0.003, 0.003, 0.003);
 	enlargeButton->m_material->setRed();
 	enlargeButton->setLocalPos(-0.05, 0.05, 0);
 	world->addChild(enlargeButton);
+	
+	objectWeightHolder = new ForceFieldSphere(0.01);
+	objectWeightHolder->setTransparencyLevel(0);
+	world->addChild(objectWeightHolder);
 
-	bladeButton = new cShapeBox(0.01, 0.01, 0.0001);
-	bladeButton->m_material->setRed();
-	bladeButton->setLocalPos(-0.035, 0.05, 0);
-	world->addChild(bladeButton);
+	/*spring1 = new cShapeLine();
+	world->addChild(spring1);*/
 
-	glassButton = new cShapeBox(0.01, 0.01, 0.0001);
-	glassButton->m_material->setRed();
-	glassButton->setLocalPos(-0.02, 0.05, 0);
-	world->addChild(glassButton);
+	particle1 = new ForceFieldSphere(0.01);
+	particle1->m_material->setGrayGainsboro();
+	world->addChild(particle1);
 
-
+	spring1 = new cShapeLine();
+	world->addChild(spring1);
 
 	// spawn point
 	for (int i = 0; i < 8; i++){
@@ -421,6 +468,18 @@ int main(int argc, char* argv[])
 		world->addChild(spawn);
 	}
 
+	// creating ants
+	//for (int i = 0; i < 16; i++){
+	//	minion* ant = new minion(0.002);
+	//	ant->health = 10;
+	//	ant->speed = 0.0003;
+	//	double degToRad = (double)(i * 45) / 180 * C_PI;
+	//	ant->m_material->setRedCrimson();
+	//	ant->setLocalPos(cos(degToRad)*spawnRadius, sin(degToRad)*spawnRadius, 0.001);
+	//	fakeAnts[i] = ant;
+	//	world->addChild(ant);
+	//}
+
 	for (int i = 0; i < 16; i++){
 		monkey = new cMultiMesh();
 		monkey->loadFromFile("Ant_Bounding_Box.obj");
@@ -428,18 +487,20 @@ int main(int argc, char* argv[])
 		enemy->mesh = monkey;
 		enemy->hitpoints = 5;
 		enemy->speed = 0.0003;
-		enemy->mesh->scale(0.003);
+		enemy->mesh->scale(0.005);
 		enemy->mesh->rotateAboutLocalAxisDeg(0, 0, 1, i * 45);
 		enemy->mesh->rotateAboutLocalAxisDeg(0, 0, 1, 90);
 		enemy->type = "normal";
-
+		
 		monkey2 = new cMultiMesh();
-		monkey2->loadFromFile("Ant_Skin2.obj");
+		monkey2->loadFromFile("90809.obj");
+
 		enemy->bound = monkey2;
+		//enemy->bound->loadFromFile("Ant_Skin2.obj");
 		enemy->mesh->createAABBCollisionDetector(toolRadius);
 		enemy->mesh->setStiffness(500, true);
 		enemy->mesh->computeBoundaryBox(true);
-		enemy->bound->scale(0.003);
+		enemy->bound->scale(0.005);
 		enemy->bound->rotateAboutLocalAxisDeg(0, 0, 1, i * 45);
 		enemy->bound->rotateAboutLocalAxisDeg(0, 0, 1, 90);
 
@@ -456,23 +517,23 @@ int main(int argc, char* argv[])
 		minions.push_back(enemy);
 		world->addChild(minions[i]->bound);
 		world->addChild(minions[i]->mesh);
-
+		
 
 	}
 
-	
 
-	//--------------------------------------------------------------------------
-	// WIDGETS
-	//--------------------------------------------------------------------------
 
-	// create a font
-	cFont *font = NEW_CFONTCALIBRI20();
+    //--------------------------------------------------------------------------
+    // WIDGETS
+    //--------------------------------------------------------------------------
 
-	// create a label to display the haptic rate of the simulation
-	labelHapticRate = new cLabel(font);
-	labelHapticRate->m_fontColor.setRed();
-	camera->m_frontLayer->addChild(labelHapticRate);
+    // create a font
+    cFont *font = NEW_CFONTCALIBRI20();
+    
+    // create a label to display the haptic rate of the simulation
+    labelHapticRate = new cLabel(font);
+    labelHapticRate->m_fontColor.setRed();
+    camera->m_frontLayer->addChild(labelHapticRate);
 
 	//--------------------------------------------------------------------------
 	// UI
@@ -483,70 +544,70 @@ int main(int argc, char* argv[])
 
 
 
-	//--------------------------------------------------------------------------
-	// START SIMULATION
-	//--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    // START SIMULATION
+    //--------------------------------------------------------------------------
 
-	// create a thread which starts the main haptics rendering loop
-	cThread* hapticsThread = new cThread();
-	hapticsThread->start(updateHaptics, CTHREAD_PRIORITY_HAPTICS);
+    // create a thread which starts the main haptics rendering loop
+    cThread* hapticsThread = new cThread();
+    hapticsThread->start(updateHaptics, CTHREAD_PRIORITY_HAPTICS);
 
-	// setup callback when application exits
-	atexit(close);
+    // setup callback when application exits
+    atexit(close);
 
-	// start the main graphics rendering loop
-	glutTimerFunc(50, graphicsTimer, 0);
-	glutMainLoop();
+    // start the main graphics rendering loop
+    glutTimerFunc(50, graphicsTimer, 0);
+    glutMainLoop();
 
-	// exit
-	return (0);
+    // exit
+    return (0);
 }
 
 //------------------------------------------------------------------------------
 
 void resizeWindow(int w, int h)
 {
-	windowW = w;
-	windowH = h;
+    windowW = w;
+    windowH = h;
 }
 
 //------------------------------------------------------------------------------
 
 void keySelect(unsigned char key, int x, int y)
 {
-	// option ESC: exit
-	if ((key == 27) || (key == 'x'))
-	{
-		close();
-		exit(0);
-	}
+    // option ESC: exit
+    if ((key == 27) || (key == 'x'))
+    {
+        close();
+        exit(0);
+    }
 
-	// option f: toggle fullscreen
-	if (key == 'f')
-	{
-		if (fullscreen)
-		{
-			windowPosX = glutGet(GLUT_INIT_WINDOW_X);
-			windowPosY = glutGet(GLUT_INIT_WINDOW_Y);
-			windowW = glutGet(GLUT_INIT_WINDOW_WIDTH);
-			windowH = glutGet(GLUT_INIT_WINDOW_HEIGHT);
-			glutPositionWindow(windowPosX, windowPosY);
-			glutReshapeWindow(windowW, windowH);
-			fullscreen = false;
-		}
-		else
-		{
-			glutFullScreen();
-			fullscreen = true;
-		}
-	}
+    // option f: toggle fullscreen
+    if (key == 'f')
+    {
+        if (fullscreen)
+        {
+            windowPosX = glutGet(GLUT_INIT_WINDOW_X);
+            windowPosY = glutGet(GLUT_INIT_WINDOW_Y);
+            windowW = glutGet(GLUT_INIT_WINDOW_WIDTH);
+            windowH = glutGet(GLUT_INIT_WINDOW_HEIGHT);
+            glutPositionWindow(windowPosX, windowPosY);
+            glutReshapeWindow(windowW, windowH);
+            fullscreen = false;
+        }
+        else
+        {
+            glutFullScreen();
+            fullscreen = true;
+        }
+    }
 
-	// option m: toggle vertical mirroring
-	if (key == 'm')
-	{
-		mirroredDisplay = !mirroredDisplay;
-		camera->setMirrorVertical(mirroredDisplay);
-	}
+    // option m: toggle vertical mirroring
+    if (key == 'm')
+    {
+        mirroredDisplay = !mirroredDisplay;
+        camera->setMirrorVertical(mirroredDisplay);
+    }
 
 	if (key == 'r'){
 		for (int i = 0; i < minions.size(); i++){
@@ -570,65 +631,47 @@ void keySelect(unsigned char key, int x, int y)
 		table->createAABBCollisionDetector(toolRadius);
 	}
 
-	if (key == 'p'){
-		if (isPaused){
-			timer.start();
-			camera->setSphericalReferences(cVector3d(0, 0, 0),    // origin
-				cVector3d(0, 0, 1),    // zenith direction
-				cVector3d(1, 0, 0));   // azimuth direction
-			tool->setLocalPos(0,0,0);
-			isPaused = false;
-		}
-		else{
-			timer.stop();
-			camera->setSphericalReferences(cVector3d(0.03, 0.05, 0),    // origin
-				cVector3d(0, 0, 1),    // zenith direction
-				cVector3d(1, 0, 0));   // azimuth direction
-			tool->setLocalPos(0.03, 0.05, 0);
-			isPaused = true;
-		}
-	}
 }
 
 //------------------------------------------------------------------------------
 
 void close(void)
 {
-	// stop the simulation
-	simulationRunning = false;
+    // stop the simulation
+    simulationRunning = false;
 
-	// wait for graphics and haptics loops to terminate
-	while (!simulationFinished) { cSleepMs(100); }
+    // wait for graphics and haptics loops to terminate
+    while (!simulationFinished) { cSleepMs(100); }
 
-	// close haptic device
-	hapticDevice->close();
+    // close haptic device
+    hapticDevice->close();
 }
 
 //------------------------------------------------------------------------------
 
 void graphicsTimer(int data)
 {
-	if (simulationRunning)
-	{
-		glutPostRedisplay();
-	}
+    if (simulationRunning)
+    {
+        glutPostRedisplay();
+    }
 
-	glutTimerFunc(50, graphicsTimer, 0);
+    glutTimerFunc(50, graphicsTimer, 0);
 }
 
 //------------------------------------------------------------------------------
 
 void updateGraphics(void)
 {
-	/////////////////////////////////////////////////////////////////////
-	// UPDATE WIDGETS
-	/////////////////////////////////////////////////////////////////////
+    /////////////////////////////////////////////////////////////////////
+    // UPDATE WIDGETS
+    /////////////////////////////////////////////////////////////////////
 
-	// display haptic rate data
-	labelHapticRate->setText(cStr(frequencyCounter.getFrequency(), 0) + " Hz");
+    // display haptic rate data
+    labelHapticRate->setText(cStr(frequencyCounter.getFrequency(), 0) + " Hz");
 
-	// update position of label
-	labelHapticRate->setLocalPos((int)(0.5 * (windowW - labelHapticRate->getWidth())), 15);
+    // update position of label
+    labelHapticRate->setLocalPos((int)(0.5 * (windowW - labelHapticRate->getWidth())), 15);
 
 
 	/////////////////////////////////////////////////////////////////////
@@ -637,36 +680,36 @@ void updateGraphics(void)
 
 	// display money amount
 	moneyLabel->setText("Money: " + cStr((double)money, 0));
-
+	
 	// update position of label
 	moneyLabel->setLocalPos((int)(0.3 * (windowW - moneyLabel->getWidth())), 15);
 
-	/////////////////////////////////////////////////////////////////////
-	// RENDER SCENE
-	/////////////////////////////////////////////////////////////////////
+    /////////////////////////////////////////////////////////////////////
+    // RENDER SCENE
+    /////////////////////////////////////////////////////////////////////
 
-	// update shadow maps (if any)
-	world->updateShadowMaps(false, mirroredDisplay);
+    // update shadow maps (if any)
+    world->updateShadowMaps(false, mirroredDisplay);
 
-	// render world
-	camera->renderView(windowW, windowH);
+    // render world
+    camera->renderView(windowW, windowH);
 
-	// swap buffers
-	glutSwapBuffers();
+    // swap buffers
+    glutSwapBuffers();
 
-	// wait until all GL commands are completed
-	glFinish();
+    // wait until all GL commands are completed
+    glFinish();
 
-	// check for any OpenGL errors
-	GLenum err;
-	err = glGetError();
-	if (err != GL_NO_ERROR) cout << "Error:  %s\n" << gluErrorString(err);
+    // check for any OpenGL errors
+    GLenum err;
+    err = glGetError();
+    if (err != GL_NO_ERROR) cout << "Error:  %s\n" << gluErrorString(err);
 }
 
 
 // actually it moves the ants
 void calcAntPos(unit* object){
-
+	
 	double stepsize = object->speed;
 	cVector3d antPos = object->mesh->getLocalPos();
 
@@ -693,7 +736,7 @@ void calcAntPos(unit* object){
 		object->bound->setLocalPos((distance - stepsize)*sin(angle), (distance - stepsize)*cos(angle), 0.001);
 
 	}
-
+	
 }
 
 
@@ -701,24 +744,39 @@ void calcAntPos(unit* object){
 
 void updateHaptics(void)
 {
-	// initialize frequency counter
-	frequencyCounter.reset();
+    // initialize frequency counter
+    frequencyCounter.reset();
 
-	// simulation in now running
-	simulationRunning = true;
-	simulationFinished = false;
+    // simulation in now running
+    simulationRunning  = true;
+    simulationFinished = false;
 
+	cPrecisionClock timer;
 	timer.start();
+	double t = timer.getCurrentTimeSeconds();
 	double toolGCD = 1.5; // tool's general cooldown in seconds
 	double enlargeCD = 10; // cooldown for enlarge the tool
 
-	cVector3d camLoc;
+	point * objectWeight = new point(mass, spring, springDamp, cVector3d(0, -0.0375, 0.05), spring1);
 
-	// main haptic simulation loop
-	while (simulationRunning)
-	{
+	objectWeightHolder->setLocalPos(objectWeight->anchor);
+
+
+
+	point * particle1Wrapper = new point(0.5, 400.0, 1, cVector3d(0, -0.0375, 0.05), spring1);
+
+	particle1->setLocalPos(particle1Wrapper->anchor);
+
+
+    // main haptic simulation loop
+    while(simulationRunning)
+    {
+
+
+
 		// timer
 		double t = timer.getCurrentTimeSeconds();
+		
 
 		if ((t - previousT) > 0.1){
 			previousT = t;
@@ -733,61 +791,37 @@ void updateHaptics(void)
 			}
 		}
 
-		/////////////////////////////////////////////////////////////////////
-		// READ HAPTIC DEVICE
-		/////////////////////////////////////////////////////////////////////
+		//cVector3d myPos = tool->getLocalPos();
+		//if (myPos.x() < (-0.05 + 0.003) || myPos.x() > (-0.05 - 0.003)){
+		//	if (myPos.y() < (0.05 + 0.003) || myPos.y() > (0.05 - 0.003)){
 
-		// read position 
-		cVector3d position;
-		hapticDevice->getPosition(position);
-		cout << position << endl;
+		//	}
+		//}
 
-		// read orientation 
-		cMatrix3d rotation;
-		hapticDevice->getRotation(rotation);
 
-		// read user-switch status (button 0)
+        /////////////////////////////////////////////////////////////////////
+        // READ HAPTIC DEVICE
+        /////////////////////////////////////////////////////////////////////
+
+        // read position 
+        cVector3d position;
+        hapticDevice->getPosition(position);
+		//position = tool->getLocalPos();
+
+        // read orientation 
+        cMatrix3d rotation;
+        hapticDevice->getRotation(rotation);
+
+        // read user-switch status (button 0)
 		bool mainButton = false;
 		hapticDevice->getUserSwitch(0, mainButton);
 
 		bool leftButton = false;
 		hapticDevice->getUserSwitch(1, leftButton);
 
-		bool middleButton = false;
-		hapticDevice->getUserSwitch(2, middleButton);
-
 		bool rightButton = false;
 		hapticDevice->getUserSwitch(3, rightButton);
 
-
-		/////////////////////////////////////////////////////////////////////
-		// MOVE CAMERA
-		/////////////////////////////////////////////////////////////////////
-
-		if (middleButton && camPushed == 0){
-			camLoc = position;
-			camPushed = 1;
-		}
-
-		if (camPushed == 1 && middleButton){
-
-			cVector3d deltaPos = position - camLoc;
-			camLoc = position;
-
-			// compute new camera angles
-			double azimuthDeg = camera->getSphericalAzimuthDeg() + (1500 * deltaPos.z());
-			double polarDeg = camera->getSphericalPolarDeg() + (-1500 * deltaPos.y());
-
-			// assign new angles
-			camera->setSphericalAzimuthDeg(azimuthDeg);
-			camera->setSphericalPolarDeg(polarDeg);
-
-			// line up tool with camera
-			tool->setLocalRot(camera->getLocalRot());
-		}
-
-		if (middleButton == FALSE && camPushed == 1)
-			camPushed = 0;
 
 		/////////////////////////////////////////////////////////////////////
 		// UPDATE 3D CURSOR MODEL
@@ -799,16 +833,18 @@ void updateHaptics(void)
 
 
 
-
+		
 
 		/////////////////////////////////////////////////////////////////////
 		// COMPUTE FORCES
 		/////////////////////////////////////////////////////////////////////
 
 
-		t = timer.getCurrentTimeSeconds();
+		
 		double freq = 25.0; //Hz
 		double y_s = 0.04 * sin(2.0 * C_PI * freq * t);
+		double delta_t = timer.getCurrentTimeSeconds() - t;
+		t += delta_t;
 
 
 		cHapticPoint* interactionPoint = tool->getHapticPoint(0);
@@ -816,22 +852,42 @@ void updateHaptics(void)
 
 		int x;
 
-		cVector3d force(0, 0, 0);
+		//cVector3d force(0, 0, 0);
 
 		// check primary contact point if available
 		if (holding == 1)
 		{
 			/*if (position.z() - 5 * toolRadius < 0)
-			held->mesh->setLocalPos(cVector3d(position.x(), position.y(), 0));
+				held->mesh->setLocalPos(cVector3d(position.x(), position.y(), 0));
 			else*/
-			held->mesh->setLocalPos(cVector3d(position.x(), position.y(), 0.001));
-			cout << position.z() - 3 * toolRadius << endl;
-			force = cVector3d(0, 0, -mass);
+			held->mesh->setLocalPos(cVector3d(position.x(), position.y(), position.z()));
+				//cout << position.z() - 3 * toolRadius << endl;
+			//objectWeightHolder->setLocalPos(position);
+			/*objectWeight->anchor = position;
+			objectWeight->computeSpringForces(position, objectWeightHolder, delta_t);
+
+			spring1->m_pointA = position;
+			spring1->m_pointB = held->mesh->getLocalPos();
+
+			objectWeightHolder->setLocalPos(objectWeight->pposition);*/
+
+
+			particle1Wrapper->anchor = position;
+
+			particle1Wrapper->computeSpringForces(position, particle1, delta_t);
+
+			// set particle's position
+
+			spring1->m_pointA = particle1Wrapper->anchor;
+			spring1->m_pointB = particle1Wrapper->pposition;
+
+			particle1->setLocalPos(particle1Wrapper->pposition);
+
 		}
 		else
 		{
 
-
+			
 
 			if (touched == false && holding == 0)
 			{
@@ -864,7 +920,7 @@ void updateHaptics(void)
 
 			if (interactionPoint->getNumCollisionEvents() > 0 && touched == false && holding == 0)
 			{
-
+				
 				cCollisionEvent* collisionEvent = interactionPoint->getCollisionEvent(0);
 
 				cGenericObject* object = collisionEvent->m_object->getOwner();
@@ -887,7 +943,7 @@ void updateHaptics(void)
 							cout << "position: " << abs(position.z()) << endl;
 							cout << "mesh: " << abs(minions[x]->mesh->getLocalPos().z()) << endl;
 
-							if (abs(position.z()) < abs(minions[x]->mesh->getLocalPos().z()) + topOffset && abs(position.z()) > abs(minions[x]->mesh->getLocalPos().z() + bottomOffset))
+							if (abs(position.z()) < abs(minions[x]->mesh->getLocalPos().z()) + topOffset && abs(position.z()) > abs(minions[x]->mesh->getLocalPos().z()+ bottomOffset))
 							{
 								minions[x]->hitpoints--;
 								cout << "hit " << x << endl;
@@ -909,6 +965,40 @@ void updateHaptics(void)
 								}
 							}
 						}
+					}
+				}
+
+				for (int i = 0; i < objects.size(); i++)
+				{
+					if (objects[i]->mesh == multiObject && mainButton == true)
+					{
+						x = i;
+						holding = 1;
+						pushed = 2;
+						held = objects[i];
+						//objectWeight = new point(mass, spring, springDamp, position, spring1);
+						//objectWeightHolder->setLocalPos(position);
+						/*objectWeight->anchor = position;
+						objectWeight->computeSpringForces(position, objectWeightHolder, delta_t);
+
+						spring1->m_pointA = objectWeight->anchor;
+						spring1->m_pointB = objectWeight->pposition;
+
+						objectWeightHolder->setLocalPos(objectWeight->pposition);*/
+						
+
+						particle1Wrapper->anchor = position;
+
+						particle1Wrapper->computeSpringForces(position, particle1, delta_t);
+
+						// set particle's position
+
+						spring1->m_pointA = particle1Wrapper->anchor;
+						spring1->m_pointB = particle1Wrapper->pposition;
+
+						particle1->setLocalPos(particle1Wrapper->pposition);
+
+						//cout << "Picked up";
 					}
 				}
 
@@ -944,17 +1034,39 @@ void updateHaptics(void)
 			world->addChild(objects[objects.size() - 1]->mesh);
 
 
-			objects[objects.size() - 1]->mesh->loadFromFile("barrier.obj");
+			objects[objects.size() - 1]->mesh->loadFromFile("whirling_blades.obj");
 
 			/*if (position.z() - 5 * toolRadius < 0)
-			objects[objects.size() - 1]->mesh->setLocalPos(cVector3d(position.x(), position.y(), 0));
+				objects[objects.size() - 1]->mesh->setLocalPos(cVector3d(position.x(), position.y(), 0));
 			else*/
-			objects[objects.size() - 1]->mesh->setLocalPos(position.x(), position.y(), 0.001);
+				objects[objects.size() - 1]->mesh->setLocalPos(cVector3d(position.x(), position.y(), 0.001));
 
-			objects[objects.size() - 1]->mesh->scale(0.005);
+			objects[objects.size() - 1]->mesh->scale(0.00325);
 			first->type = "quick";
 
 			changeCollisionDetector("off");
+
+			//objectWeight = new point(mass, spring, springDamp, position, spring1);
+			//objectWeightHolder->setLocalPos(position);
+			/*objectWeight->anchor = position;
+			objectWeight->computeSpringForces(position, objectWeightHolder, delta_t);
+
+			spring1->m_pointA = objectWeight->anchor;
+			spring1->m_pointB = objectWeight->pposition;
+
+			objectWeightHolder->setLocalPos(objectWeight->pposition);*/
+
+
+			particle1Wrapper->anchor = position;
+
+			particle1Wrapper->computeSpringForces(position, particle1, delta_t);
+
+			// set particle's position
+
+			spring1->m_pointA = particle1Wrapper->anchor;
+			spring1->m_pointB = particle1Wrapper->pposition;
+
+			particle1->setLocalPos(particle1Wrapper->pposition);
 
 			pushed = 2;
 
@@ -965,11 +1077,11 @@ void updateHaptics(void)
 			holding = 0;
 			held = NULL;
 			changeCollisionDetector("on");
-			minions[minions.size() - 1]->mesh->computeBoundaryBox(true);
-			minions[minions.size() - 1]->mesh->createAABBCollisionDetector(toolRadius);
-			minions[minions.size() - 1]->mesh->setStiffness(500, true);
+			objects[objects.size() - 1]->mesh->computeBoundaryBox(true);
+			objects[objects.size() - 1]->mesh->createAABBCollisionDetector(toolRadius);
+			objects[objects.size() - 1]->mesh->setStiffness(500, true);
 
-			minions[minions.size() - 1]->mesh->setFriction(0.1, 0.2, true);
+			objects[objects.size() - 1]->mesh->setFriction(0.1, 0.2, true);
 			pushed = 2;
 		}
 
@@ -995,24 +1107,24 @@ void updateHaptics(void)
 
 		// send computed force, torque, and gripper force to haptic device
 		//if (!force.equals(cVector3d(0, 0, 0)))
-		//tool->addDeviceGlobalForce(force);
-		//hapticDevice->setForceAndTorqueAndGripperForce(force, torque, gripperForce);
+			//tool->addDeviceGlobalForce(force);
+			//hapticDevice->setForceAndTorqueAndGripperForce(force, torque, gripperForce);
 
 
-		tool->updateFromDevice();
-		tool->computeInteractionForces();
+			tool->updateFromDevice();
+			tool->computeInteractionForces();
 
 
-		tool->addDeviceGlobalForce(force);
+			tool->addDeviceGlobalForce(force);
 
-		tool->applyToDevice();
+			tool->applyToDevice();
 
-		// update frequency counter
-		frequencyCounter.signal(1);
-	}
-
-	// exit haptics thread
-	simulationFinished = true;
+        // update frequency counter
+        frequencyCounter.signal(1);
+    }
+    
+    // exit haptics thread
+    simulationFinished = true;
 }
 
 //------------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-﻿Build started 12/4/2015 8:01:19 PM.
+﻿Build started 12/4/2015 8:06:12 PM.
      1>Project "\\cs-fs01\Profiles\ug\juchu\Desktop\chai3d-3.0.0\templates\ants\project_DIEANTSDIE\application-VS2013.vcxproj" on node 2 (Build target(s)).
      1>ClCompile:
          C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\bin\x86_amd64\CL.exe /c /I../../src /I../../external/Eigen /I../../external/glew/include /I../../extras/freeglut/include /nologo /W3 /WX- /Ox /Ob2 /Oi /Ot /Oy /GT /D WIN64 /D NDEBUG /D _CONSOLE /D _MSVC /D _CRT_SECURE_NO_WARNINGS /D _VC80_UPGRADE=0x0710 /D _MBCS /GF /Gm- /EHsc /MD /GS- /Gy- /fp:precise /Zc:wchar_t /Zc:forScope /GR /Fo"obj/Release/x64\\" /Fd"obj/Release/x64\vc120.pdb" /Gd /TP /wd4244 /wd4305 /errorReport:prompt application.cpp minion.cpp
@@ -11,4 +11,4 @@
 
 Build FAILED.
 
-Time Elapsed 00:00:00.61
+Time Elapsed 00:00:00.71
